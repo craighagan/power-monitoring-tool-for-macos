@@ -33,7 +33,7 @@ if [[ -x "$appPath" ]]; then
 				# round footprint
 				calculatedFootprint=$(echo "scale=0;($calculatedFootprint+0.5)/1" | /usr/bin/bc)
 
-				if [[ "$calculatedFootprint" =~ ^[0-9]+$ && $calculatedFootprint -gt 0 ]]; then
+				if [[ "$calculatedFootprint" =~ ^[0-9]+$ && $calculatedFootprint -ge 0 ]]; then
 					carbonFootprint="$calculatedFootprint"
 				fi
 	
