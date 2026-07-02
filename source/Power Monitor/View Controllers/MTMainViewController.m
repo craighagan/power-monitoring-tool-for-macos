@@ -162,7 +162,7 @@
     [_negotiatedPowerLabel setTranslatesAutoresizingMaskIntoConstraints:NO];
 
     // create value field
-    _negotiatedPowerText = [NSTextField labelWithString:@""];
+    _negotiatedPowerText = [NSTextField labelWithString:NSLocalizedString(@"negotiatedPowerNone", nil)];
     [_negotiatedPowerText setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
     [_negotiatedPowerText setTextColor:[NSColor controlTextColor]];
     [_negotiatedPowerText setTranslatesAutoresizingMaskIntoConstraints:NO];
@@ -621,11 +621,8 @@
         if (self->_negotiatedPowerText) {
             if (negotiatedWatts > 0) {
                 [self->_negotiatedPowerText setStringValue:[NSString stringWithFormat:@"%ld W", (long)negotiatedWatts]];
-                [self->_negotiatedPowerLabel setHidden:NO];
-                [self->_negotiatedPowerText setHidden:NO];
             } else {
-                [self->_negotiatedPowerLabel setHidden:YES];
-                [self->_negotiatedPowerText setHidden:YES];
+                [self->_negotiatedPowerText setStringValue:NSLocalizedString(@"negotiatedPowerNone", nil)];
             }
         }
     });

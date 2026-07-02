@@ -22,9 +22,6 @@
 
 - (void)windowWillClose:(NSNotification *)notification
 {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:kMTDefaultsRunInBackgroundKey]) {
-        [NSApp terminate:self];
-    }
 }
 
 @end

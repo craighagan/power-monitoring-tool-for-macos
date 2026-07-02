@@ -375,10 +375,9 @@ static void powerSourceDidChange(void *context)
 
 - (void)updateDockIconWithCurrentPower:(float)currentWatts negotiatedPower:(NSInteger)negotiatedWatts
 {
-    if (currentWatts <= 0 && negotiatedWatts <= 0) {
-        [NSApp setApplicationIconImage:nil];
-        return;
-    }
+    // always show current draw (0W on battery is valid)
+    NSString *line1 = [NSString stringWithFormat:@"%ldW", (long)lroundf(currentWatts)];
+    NSString *line2 = (negotiatedWatts > 0) ? [NSString stringWithFormat:@"%ldW", (long)negotiatedWatts] : nil;
 
     NSSize size = NSMakeSize(128, 128);
     NSImage *image = [[NSImage alloc] initWithSize:size];
@@ -389,16 +388,13 @@ static void powerSourceDidChange(void *context)
     [greenBg setFill];
     [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, 0, size.width, size.height) xRadius:24 yRadius:24] fill];
 
-    // build the two lines of text
-    NSString *line1 = (currentWatts > 0) ? [NSString stringWithFormat:@"%ldW", (long)lroundf(currentWatts)] : nil;
-    NSString *line2 = (negotiatedWatts > 0) ? [NSString stringWithFormat:@"%ldW", (long)negotiatedWatts] : nil;
+    if (line2) {
+        // two lines: current on top, negotiated on bottom
+        NSDictionary *textAttrs = @{
+            NSFontAttributeName: [NSFont boldSystemFontOfSize:36],
+            NSForegroundColorAttributeName: [NSColor whiteColor]
+        };
 
-    NSDictionary *textAttrs = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:36],
-        NSForegroundColorAttributeName: [NSColor whiteColor]
-    };
-
-    if (line1 && line2) {
         NSAttributedString *attrLine1 = [[NSAttributedString alloc] initWithString:line1 attributes:textAttrs];
         NSAttributedString *attrLine2 = [[NSAttributedString alloc] initWithString:line2 attributes:textAttrs];
 
@@ -412,12 +408,12 @@ static void powerSourceDidChange(void *context)
         [attrLine1 drawAtPoint:NSMakePoint((size.width - size1.width) / 2, startY + size2.height + 2)];
 
     } else {
-        NSString *line = line1 ? line1 : line2;
+        // single line centered (battery / no adapter)
         NSDictionary *largeAttrs = @{
             NSFontAttributeName: [NSFont boldSystemFontOfSize:46],
             NSForegroundColorAttributeName: [NSColor whiteColor]
         };
-        NSAttributedString *attrLine = [[NSAttributedString alloc] initWithString:line attributes:largeAttrs];
+        NSAttributedString *attrLine = [[NSAttributedString alloc] initWithString:line1 attributes:largeAttrs];
         NSSize textSize = [attrLine size];
         [attrLine drawAtPoint:NSMakePoint((size.width - textSize.width) / 2, (size.height - textSize.height) / 2)];
     }
@@ -507,9 +503,25 @@ static void powerSourceDidChange(void *context)
     }
 }
 
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
+{
+    return NO;
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag
+{
+    if (!flag) {
+        if (_mainWindowController) {
+            [_mainWindowController showWindow:nil];
+            [[_mainWindowController window] makeKeyAndOrderFront:nil];
+        }
+    }
+    return YES;
+}
+
 - (void)applicationWillTerminate:(NSNotification *)notification
 {
-    
+
 }
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app

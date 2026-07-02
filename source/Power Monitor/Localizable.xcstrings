@@ -1186,6 +1186,22 @@
         }
       }
     },
+    "negotiatedPowerNone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nicht angeschlossen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "none"
+          }
+        }
+      }
+    },
     "statusItemAveragePower" : {
       "localizations" : {
         "de" : {
