@@ -182,6 +182,9 @@ CA
                         <menuItem title="Current system power" tag="1000" id="jWX-RP-fdy">
                             <modifierMask key="keyEquivalentModifierMask"/>
                         </menuItem>
+                        <menuItem title="Negotiated adapter power" tag="1500" id="nPw-Ad-Wts">
+                            <modifierMask key="keyEquivalentModifierMask"/>
+                        </menuItem>
                         <menuItem title="Average system power" tag="2000" id="nfd-kS-ghd">
                             <modifierMask key="keyEquivalentModifierMask"/>
                         </menuItem>

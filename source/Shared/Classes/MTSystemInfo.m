@@ -19,6 +19,7 @@
 #import "IOPMLibPrivate.h"
 #import <libproc.h>
 #import <ServiceManagement/SMAppService.h>
+#import <IOKit/ps/IOPSKeys.h>
 
 @implementation MTSystemInfo
 
@@ -310,12 +311,24 @@ typedef struct {
     NSDictionary *adapterDetails = nil;
     CFDictionaryRef external_ps = NULL;
     external_ps = IOPSCopyExternalPowerAdapterDetails();
-    
+
     if (external_ps) {
         adapterDetails = CFBridgingRelease(external_ps);
     }
-    
+
     return adapterDetails;
+}
+
++ (NSInteger)negotiatedPowerAdapterWatts
+{
+    NSDictionary *details = [self externalPowerAdapterDetails];
+
+    if (details) {
+        NSNumber *watts = [details objectForKey:@kIOPSPowerAdapterWattsKey];
+        if (watts) { return [watts integerValue]; }
+    }
+
+    return 0;
 }
 
 + (NSArray*)powerSourcesInfo

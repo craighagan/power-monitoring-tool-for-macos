@@ -25,6 +25,7 @@
 #import "Constants.h"
 #import "MTElectricityPrice.h"
 #import "MTDaemonConnection.h"
+#import "MTSystemInfo.h"
 #import <ServiceManagement/SMAppService.h>
 
 @interface MTMainViewController ()
@@ -51,6 +52,8 @@
 @property (nonatomic, strong, readwrite) NSArray *currentMeasurementsDark;
 @property (nonatomic, strong, readwrite) MTDaemonConnection *daemonConnection;
 @property (nonatomic, strong, readwrite) NSMutableDictionary *scheduleDict;
+@property (nonatomic, strong, readwrite) NSTextField *negotiatedPowerLabel;
+@property (nonatomic, strong, readwrite) NSTextField *negotiatedPowerText;
 @property (assign) BOOL altPriceEnabled;
 @property (assign) BOOL carbonLookupInProgress;
 @property (assign) BOOL carbonFootprintEnabled;
@@ -71,7 +74,10 @@
     // add an action to the maximum power text field
     NSClickGestureRecognizer *textFieldClick = [[NSClickGestureRecognizer alloc] initWithTarget:self action:@selector(showMaxValue)];
     [_maximumPowerText addGestureRecognizer:textFieldClick];
-    
+
+    // add negotiated adapter power row programmatically (between average and highest)
+    [self addNegotiatedPowerRow];
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [self checkForLoginItem];
     });
@@ -101,6 +107,94 @@
             }
         }
     }];
+}
+
+- (void)addNegotiatedPowerRow
+{
+    NSView *container = [_averagePowerText superview];
+    if (!container) { return; }
+
+    // find and remove the existing constraint between highest (maximumPowerText's label)
+    // and average (averagePowerText's label) so we can insert our row between them
+    NSView *avgLabel = nil;
+    NSView *maxLabel = nil;
+
+    // the labels are siblings of the value text fields in the same container
+    for (NSView *subview in [container subviews]) {
+        if ([subview isKindOfClass:[NSTextField class]]) {
+            NSTextField *tf = (NSTextField *)subview;
+            if ([[tf stringValue] containsString:@"Average"] || [[tf stringValue] containsString:@"average"]) {
+                avgLabel = tf;
+            }
+            if ([[tf stringValue] containsString:@"Highest"] || [[tf stringValue] containsString:@"highest"]) {
+                maxLabel = tf;
+            }
+        }
+    }
+
+    // find the vertical spacing constraint between avg and max labels
+    NSLayoutConstraint *spacingConstraint = nil;
+    if (avgLabel && maxLabel) {
+        for (NSLayoutConstraint *c in [container constraints]) {
+            if (c.firstItem == maxLabel && c.firstAttribute == NSLayoutAttributeTop &&
+                c.secondItem == avgLabel && c.secondAttribute == NSLayoutAttributeBottom) {
+                spacingConstraint = c;
+                break;
+            }
+            if (c.secondItem == maxLabel && c.secondAttribute == NSLayoutAttributeTop &&
+                c.firstItem == avgLabel && c.firstAttribute == NSLayoutAttributeBottom) {
+                spacingConstraint = c;
+                break;
+            }
+        }
+    }
+
+    // remove existing spacing constraint and increase container height
+    if (spacingConstraint) {
+        [container removeConstraint:spacingConstraint];
+    }
+
+    // create label
+    _negotiatedPowerLabel = [NSTextField labelWithString:@"Negotiated adapter power:"];
+    [_negotiatedPowerLabel setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+    [_negotiatedPowerLabel setTextColor:[NSColor labelColor]];
+    [_negotiatedPowerLabel setAlignment:NSTextAlignmentRight];
+    [_negotiatedPowerLabel setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    // create value field
+    _negotiatedPowerText = [NSTextField labelWithString:@""];
+    [_negotiatedPowerText setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
+    [_negotiatedPowerText setTextColor:[NSColor controlTextColor]];
+    [_negotiatedPowerText setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    [container addSubview:_negotiatedPowerLabel];
+    [container addSubview:_negotiatedPowerText];
+
+    // constraints: label right-aligned like others, value left-aligned like others
+    NSMutableArray *constraints = [NSMutableArray arrayWithArray:@[
+        [_negotiatedPowerLabel.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [_negotiatedPowerLabel.widthAnchor constraintEqualToAnchor:avgLabel ? avgLabel.widthAnchor : _negotiatedPowerLabel.widthAnchor],
+        [_negotiatedPowerText.leadingAnchor constraintEqualToAnchor:_averagePowerText.leadingAnchor],
+        [_negotiatedPowerText.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [_negotiatedPowerLabel.firstBaselineAnchor constraintEqualToAnchor:_negotiatedPowerText.firstBaselineAnchor],
+        [_negotiatedPowerLabel.topAnchor constraintEqualToAnchor:avgLabel ? avgLabel.bottomAnchor : _averagePowerText.bottomAnchor constant:5],
+    ]];
+
+    // re-add spacing from our new row to the highest label
+    if (maxLabel) {
+        [constraints addObject:[maxLabel.topAnchor constraintEqualToAnchor:_negotiatedPowerLabel.bottomAnchor constant:5]];
+    }
+
+    [NSLayoutConstraint activateConstraints:constraints];
+
+    // increase window height to accommodate the new row
+    NSWindow *window = [[self view] window];
+    if (window) {
+        NSRect frame = [window frame];
+        frame.size.height += 21;
+        frame.origin.y -= 21;
+        [window setFrame:frame display:YES];
+    }
 }
 
 - (void)viewDidAppear
@@ -517,18 +611,39 @@
     NSMeasurementFormatter *powerFormatter = [[NSMeasurementFormatter alloc] init];
     [[powerFormatter numberFormatter] setMinimumFractionDigits:2];
     [[powerFormatter numberFormatter] setMaximumFractionDigits:2];
-    
+
     MTPowerMeasurement *currentPower = [self->_pM currentPower];
-    
+    NSInteger negotiatedWatts = [MTSystemInfo negotiatedPowerAdapterWatts];
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [self->_currentPowerText setStringValue:[powerFormatter stringFromMeasurement:currentPower]];
+
+        if (self->_negotiatedPowerText) {
+            if (negotiatedWatts > 0) {
+                [self->_negotiatedPowerText setStringValue:[NSString stringWithFormat:@"%ld W", (long)negotiatedWatts]];
+                [self->_negotiatedPowerLabel setHidden:NO];
+                [self->_negotiatedPowerText setHidden:NO];
+            } else {
+                [self->_negotiatedPowerLabel setHidden:YES];
+                [self->_negotiatedPowerText setHidden:YES];
+            }
+        }
     });
-    
-    // post notification
+
+    // post current power notification
     [[NSNotificationCenter defaultCenter] postNotificationName:kMTNotificationNameCurrentPowerValue
                                                         object:nil
                                                       userInfo:[NSDictionary dictionaryWithObject:[powerFormatter stringFromMeasurement:currentPower]
                                                                                            forKey:kMTNotificationKeyCurrentPowerValue]
+    ];
+
+    // post negotiated power notification
+    NSString *negotiatedString = (negotiatedWatts > 0) ? [NSString stringWithFormat:@"%ld W", (long)negotiatedWatts] : nil;
+    [[NSNotificationCenter defaultCenter] postNotificationName:kMTNotificationNameNegotiatedPowerValue
+                                                        object:nil
+                                                      userInfo:[NSDictionary dictionaryWithObjectsAndKeys:
+                                                                    (negotiatedString) ? negotiatedString : NSLocalizedString(@"statusItemValueUnknown", nil), kMTNotificationKeyNegotiatedPowerValue,
+                                                                    nil]
     ];
 }
 

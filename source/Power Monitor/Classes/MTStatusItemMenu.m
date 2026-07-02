@@ -24,6 +24,7 @@
 @property(nonatomic, strong, readwrite) NSString *carbonValue;
 @property(nonatomic, strong, readwrite) NSString *averagePowerValue;
 @property(nonatomic, strong, readwrite) NSString *currentPowerValue;
+@property(nonatomic, strong, readwrite) NSString *negotiatedPowerValue;
 @property(nonatomic, strong, readwrite) NSString *consumptionValue;
 @property(nonatomic, strong, readwrite) NSUserDefaults *userDefaults;
 @property (assign) BOOL isOpen;
@@ -67,7 +68,12 @@
                                                  name:kMTNotificationNameCurrentPowerValue
                                                object:nil
     ];
-    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(updateValues:)
+                                                 name:kMTNotificationNameNegotiatedPowerValue
+                                               object:nil
+    ];
+
     // set delegate
     [self setDelegate:self];
 }
@@ -89,6 +95,11 @@
 
         self.currentPowerValue = [[notification userInfo] objectForKey:kMTNotificationKeyCurrentPowerValue];
         if ([self isOpen]) { [self updateCurrentPowerValue]; }
+
+    } else if ([[notification name] isEqualToString:kMTNotificationNameNegotiatedPowerValue]) {
+
+        self.negotiatedPowerValue = [[notification userInfo] objectForKey:kMTNotificationKeyNegotiatedPowerValue];
+        if ([self isOpen]) { [self updateNegotiatedPowerValue]; }
     }
 }
 
@@ -126,6 +137,11 @@
     [[self itemWithTag:1000] setTitle:[NSString localizedStringWithFormat:NSLocalizedString(@"statusItemCurrentPower", nil), (_currentPowerValue) ? _currentPowerValue : NSLocalizedString(@"statusItemValueUnknown", nil)]];
 }
 
+- (void)updateNegotiatedPowerValue
+{
+    [[self itemWithTag:1500] setTitle:[NSString localizedStringWithFormat:NSLocalizedString(@"statusItemNegotiatedPower", nil), (_negotiatedPowerValue) ? _negotiatedPowerValue : NSLocalizedString(@"statusItemValueUnknown", nil)]];
+}
+
 - (void)menuWillOpen:(NSMenu *)menu
 {
     if ([_userDefaults boolForKey:kMTDefaultsShowCarbonKey]) {
@@ -140,7 +156,8 @@
     
     [self updatePowerStats];
     [self updateCurrentPowerValue];
-    
+    [self updateNegotiatedPowerValue];
+
     _isOpen = YES;
 }
 

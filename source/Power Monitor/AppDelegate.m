@@ -24,6 +24,9 @@
 #import "MTStatusItemMenu.h"
 #import "MTPowerJournal.h"
 #import "MTDaemonConnection.h"
+#import "MTSystemInfo.h"
+#import <IOKit/ps/IOPowerSources.h>
+#import <IOKit/ps/IOPSKeys.h>
 
 @interface AppDelegate ()
 @property (weak) IBOutlet MTStatusItemMenu *statusItemMenu;
@@ -33,6 +36,10 @@
 @property (nonatomic, strong, readwrite) NSWindowController *mainWindowController;
 @property (nonatomic, strong, readwrite) NSWindowController *settingsWindowController;
 @property (nonatomic, strong, readwrite) MTCarbonFootprint *carbonFootprint;
+@property (nonatomic, strong, readwrite) NSString *lastCurrentPowerValue;
+@property (nonatomic, strong, readwrite) NSString *lastNegotiatedPowerValue;
+@property (nonatomic, strong, readwrite) NSTimer *statusItemPowerTimer;
+@property (assign) CFRunLoopSourceRef powerSourceRef __attribute__((NSObject));
 @end
 
 @implementation AppDelegate
@@ -256,15 +263,18 @@
         }
         
     } else {
-        
+
         NSStoryboard *storyboard = [NSStoryboard storyboardWithName:@"Main" bundle:nil];
         _mainWindowController = [storyboard instantiateControllerWithIdentifier:@"corp.sap.PowerMonitor.MainController"];
-                    
+
         // run as status item or regular application
         [self runAsStatusItem:[_userDefaults boolForKey:kMTDefaultsRunInBackgroundKey]];
-        
+
         // observe changes of the kMTDefaultsRunInBackgroundKey value
         [_userDefaults addObserver:self forKeyPath:kMTDefaultsRunInBackgroundKey options:NSKeyValueObservingOptionNew context:nil];
+
+        // start polling for status item power display
+        [self startStatusItemPowerUpdates];
     }
 }
 
@@ -324,6 +334,124 @@
     fprintf(stderr, "                                   --end <date>            Returns the journal up to the provided date. Date must be in format \"YYYY-MM-DD\".\n\n");
     
     fprintf(stderr, "   --help      Shows this help.\n\n");
+}
+
+#pragma mark Dock Icon and Status Item Power Display
+
+static void powerSourceDidChange(void *context)
+{
+    AppDelegate *self = (__bridge AppDelegate *)context;
+    [self updatePowerDisplay];
+}
+
+- (void)startStatusItemPowerUpdates
+{
+    // update immediately
+    [self updatePowerDisplay];
+
+    // register for power source change events (adapter plug/unplug)
+    self.powerSourceRef = IOPSNotificationCreateRunLoopSource(powerSourceDidChange, (__bridge void *)self);
+    CFRunLoopAddSource(CFRunLoopGetMain(), self.powerSourceRef, kCFRunLoopDefaultMode);
+
+    // poll every 10 seconds for current system power (which fluctuates)
+    _statusItemPowerTimer = [NSTimer scheduledTimerWithTimeInterval:kMTCurrentPowerUpdateInterval
+                                                            repeats:YES
+                                                              block:^(NSTimer *timer) {
+        [self updatePowerDisplay];
+    }];
+    [[NSRunLoop currentRunLoop] addTimer:_statusItemPowerTimer forMode:NSEventTrackingRunLoopMode];
+}
+
+- (void)updatePowerDisplay
+{
+    float currentWatts = [MTSystemInfo rawSystemPower];
+    NSInteger negotiatedWatts = [MTSystemInfo negotiatedPowerAdapterWatts];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateDockIconWithCurrentPower:currentWatts negotiatedPower:negotiatedWatts];
+        [self updateStatusItemWithCurrentPower:currentWatts negotiatedPower:negotiatedWatts];
+    });
+}
+
+- (void)updateDockIconWithCurrentPower:(float)currentWatts negotiatedPower:(NSInteger)negotiatedWatts
+{
+    if (currentWatts <= 0 && negotiatedWatts <= 0) {
+        [NSApp setApplicationIconImage:nil];
+        return;
+    }
+
+    NSSize size = NSMakeSize(128, 128);
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    [image lockFocus];
+
+    // draw green rounded rect background
+    NSColor *greenBg = [NSColor colorWithCalibratedHue:0.38 saturation:0.75 brightness:0.72 alpha:1.0];
+    [greenBg setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, 0, size.width, size.height) xRadius:24 yRadius:24] fill];
+
+    // build the two lines of text
+    NSString *line1 = (currentWatts > 0) ? [NSString stringWithFormat:@"%ldW", (long)lroundf(currentWatts)] : nil;
+    NSString *line2 = (negotiatedWatts > 0) ? [NSString stringWithFormat:@"%ldW", (long)negotiatedWatts] : nil;
+
+    NSDictionary *textAttrs = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:36],
+        NSForegroundColorAttributeName: [NSColor whiteColor]
+    };
+
+    if (line1 && line2) {
+        NSAttributedString *attrLine1 = [[NSAttributedString alloc] initWithString:line1 attributes:textAttrs];
+        NSAttributedString *attrLine2 = [[NSAttributedString alloc] initWithString:line2 attributes:textAttrs];
+
+        NSSize size1 = [attrLine1 size];
+        NSSize size2 = [attrLine2 size];
+
+        CGFloat totalHeight = size1.height + size2.height + 2;
+        CGFloat startY = (size.height - totalHeight) / 2;
+
+        [attrLine2 drawAtPoint:NSMakePoint((size.width - size2.width) / 2, startY)];
+        [attrLine1 drawAtPoint:NSMakePoint((size.width - size1.width) / 2, startY + size2.height + 2)];
+
+    } else {
+        NSString *line = line1 ? line1 : line2;
+        NSDictionary *largeAttrs = @{
+            NSFontAttributeName: [NSFont boldSystemFontOfSize:46],
+            NSForegroundColorAttributeName: [NSColor whiteColor]
+        };
+        NSAttributedString *attrLine = [[NSAttributedString alloc] initWithString:line attributes:largeAttrs];
+        NSSize textSize = [attrLine size];
+        [attrLine drawAtPoint:NSMakePoint((size.width - textSize.width) / 2, (size.height - textSize.height) / 2)];
+    }
+
+    [image unlockFocus];
+    [NSApp setApplicationIconImage:image];
+}
+
+- (void)updateStatusItemWithCurrentPower:(float)currentWatts negotiatedPower:(NSInteger)negotiatedWatts
+{
+    if (!_statusItem) { return; }
+
+    NSMutableString *title = [[NSMutableString alloc] init];
+
+    if (currentWatts > 0) {
+        [title appendFormat:@"%ldW", (long)lroundf(currentWatts)];
+    }
+
+    if (negotiatedWatts > 0) {
+        if ([title length] > 0) { [title appendString:@"/"]; }
+        [title appendFormat:@"%ldW", (long)negotiatedWatts];
+    }
+
+    if ([title length] > 0) {
+        NSDictionary *attributes = @{
+            NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:[NSFont systemFontSize] weight:NSFontWeightRegular]
+        };
+        NSAttributedString *attrTitle = [[NSAttributedString alloc] initWithString:title attributes:attributes];
+        [[_statusItem button] setAttributedTitle:attrTitle];
+        [[_statusItem button] setImage:nil];
+    } else {
+        [[_statusItem button] setTitle:@""];
+        [[_statusItem button] setImage:[NSImage imageNamed:@"StatusItem"]];
+    }
 }
 
 #pragma mark IBActions

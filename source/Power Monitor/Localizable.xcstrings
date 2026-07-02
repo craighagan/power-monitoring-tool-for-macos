@@ -1251,6 +1251,22 @@
         }
       }
     },
+    "statusItemNegotiatedPower" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgehandelte Adapterleistung: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Negotiated adapter power: %@"
+          }
+        }
+      }
+    },
     "statusItemValueUnknown" : {
       "localizations" : {
         "de" : {

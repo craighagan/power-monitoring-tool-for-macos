@@ -103,6 +103,14 @@
 + (NSDictionary*)externalPowerAdapterDetails;
 
 /*!
+ @method        negotiatedPowerAdapterWatts
+ @abstract      Returns the negotiated wattage of the attached power adapter.
+ @discussion    Returns the value of kIOPSPowerAdapterWattsKey from the external power adapter details,
+                or 0 if no adapter is attached or the value is unavailable.
+*/
++ (NSInteger)negotiatedPowerAdapterWatts;
+
+/*!
  @method        powerSourcesInfo
  @abstract      Returns a NSArray of power source information, each of type NSDictionary.
  @discussion    Returns a NSArray on success, otherwise returns nil. See the C-strings defined in IOPSKeys.h for specific keys into the dictionary.
